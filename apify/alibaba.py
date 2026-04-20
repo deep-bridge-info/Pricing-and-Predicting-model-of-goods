@@ -22,6 +22,7 @@ class AlibabaProduct:
     currency: str
     moq: int
     moq_unit: str
+    price_tiers: List[Dict[str, Any]]
     product_url: str
     image_url: Optional[str]
     supplier_name: Optional[str]
@@ -116,6 +117,7 @@ def _parse_search_result(item: Dict[str, Any]) -> AlibabaProduct:
     currency = "USD"
 
     if isinstance(price_data, dict):
+        tier_prices = []
         # Try productRangePrices first (has USD prices)
         range_prices = price_data.get("productRangePrices", {})
         if range_prices:
@@ -123,11 +125,16 @@ def _parse_search_result(item: Dict[str, Any]) -> AlibabaProduct:
             price_max = range_prices.get("dollarPriceRangeHigh")
 
         # Try productLadderPrices (tier pricing with USD)
-        if not price_min:
-            ladder_prices = price_data.get("productLadderPrices", [])
-            if ladder_prices:
-                # Get range from ladder prices
-                dollar_prices = [p.get("dollarPrice", 0) for p in ladder_prices if p.get("dollarPrice")]
+        ladder_prices = price_data.get("productLadderPrices", [])
+        if ladder_prices:
+            for p in ladder_prices:
+                tier_prices.append({
+                    "min": p.get("min"),
+                    "max": p.get("max"),
+                    "price": p.get("dollarPrice", p.get("price")),
+                })
+            if not price_min:
+                dollar_prices = [p.get("price") for p in tier_prices if p.get("price") is not None]
                 if dollar_prices:
                     price_min = min(dollar_prices)
                     price_max = max(dollar_prices) if len(dollar_prices) > 1 else None
@@ -139,6 +146,7 @@ def _parse_search_result(item: Dict[str, Any]) -> AlibabaProduct:
             currency = price_data.get("currency", "USD")
     else:
         price_min, price_max, currency = _parse_price(str(price_data))
+        tier_prices = []
 
     # MOQ can be a dict or string
     moq_data = item.get("moq", {})
@@ -189,6 +197,7 @@ def _parse_search_result(item: Dict[str, Any]) -> AlibabaProduct:
         currency=currency,
         moq=int(moq) if moq else 1,
         moq_unit=moq_unit,
+        price_tiers=tier_prices,
         product_url=product_url,
         image_url=image_url,
         supplier_name=supplier_name,
@@ -199,9 +208,30 @@ def _parse_search_result(item: Dict[str, Any]) -> AlibabaProduct:
     )
 
 
+def _build_search_run_input(query: str, max_results: int) -> Dict[str, Any]:
+    """
+    Build actor input for Alibaba keyword search.
+
+    Keeping this in one place prevents drift between wrappers and ensures
+    `max_results` is always propagated to the actor payload.
+    """
+    from urllib.parse import quote
+
+    if query.startswith("http://") or query.startswith("https://"):
+        search_url = query
+    else:
+        search_url = f"https://www.alibaba.com/trade/search?SearchText={quote(query)}"
+
+    return {
+        "search_url": search_url,
+        "size": max_results,
+        "skip_page_parameter": True,
+    }
+
+
 def search_products(
     query: str,
-    max_results: int = 999999,
+    max_results: int = 1200,
     api_token: Optional[str] = None,
     timeout_secs: int = 86400,  # 24 hours max
 ) -> List[AlibabaProduct]:
@@ -217,22 +247,26 @@ def search_products(
     Returns:
         List of AlibabaProduct objects
     """
-    from urllib.parse import quote
+    # Delegate fetching to search_raw_products so there is a single source of truth
+    # for actor input configuration.
+    items = search_raw_products(query, max_results, api_token, timeout_secs)
+    products = [_parse_search_result(item) for item in items]
+    print(f"[Apify] Parsed {len(products)} products")
 
+    return products
+
+def search_raw_products(
+    query: str,
+    max_results: int = 1200,
+    api_token: Optional[str] = None,
+    timeout_secs: int = 86400,  # 24 hours max
+) -> List[Dict[str, Any]]:
+    """
+    Search Alibaba products and return raw JSON dicts.
+    """
     client = ApifyClient(api_token=api_token)
-
-    # If the user passed a direct URL (e.g., with filters applied), use it directly.
-    # Otherwise, build the search URL from the keyword query.
-    if query.startswith("http://") or query.startswith("https://"):
-        search_url = query
-    else:
-        search_url = f"https://www.alibaba.com/trade/search?SearchText={quote(query)}"
-        
-    run_input = {
-        "search_url": search_url,
-        "size": max_results,
-        "skip_page_parameter": True,
-    }
+    run_input = _build_search_run_input(query, max_results)
+    search_url = run_input["search_url"]
 
     print(f"[Apify] Searching Alibaba for: {query}")
     print(f"[Apify] URL: {search_url}")
@@ -241,8 +275,9 @@ def search_products(
         run_input=run_input,
         timeout_secs=timeout_secs,
     )
-
-    products = [_parse_search_result(item) for item in items]
-    print(f"[Apify] Found {len(products)} products")
-
-    return products
+    
+    # Enforce the max_results limit purely in Python after fetching
+    items = items[:max_results]
+    
+    print(f"[Apify] Found {len(items)} raw products")
+    return items

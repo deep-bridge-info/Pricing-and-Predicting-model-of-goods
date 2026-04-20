@@ -8,8 +8,9 @@ from openai import OpenAI
 from apify.client import ApifyClient
 
 # Configuration
-JSON_FILE = "dataset_scrape-alibaba-products-by-keywords_2026-03-24_03-42-08-285.json"
-SQL_FILE = "products_attributes.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+JSON_FILE = os.path.join(BASE_DIR, "merged_dataset.json")
+SQL_FILE = os.path.join(BASE_DIR, "products_attributes.db")
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3:8b")

@@ -249,6 +249,41 @@ def _compute_combo_estimates(
 
 def format_report(report: SensitivityReport) -> str:
     """Format the sensitivity report for terminal output."""
+    import pandas as pd
+    
+    # Generate sensitivity.csv
+    # We want to create rows based on the original flex input (the baseline) 
+    # and then create additional rows for each downgrade option.
+    csv_data = []
+    
+    # 1. Add the Baseline Row
+    baseline_row = {"type": report.category}
+    # Add all flex attributes with their current values
+    for attr, val in report.flex_attrs.items():
+        baseline_row[attr] = val
+    baseline_row["price"] = round(report.baseline.median, 2)
+    csv_data.append(baseline_row)
+    
+    # 2. Add Downgrade Rows
+    if report.deltas:
+        for d in report.deltas:
+            downgrade_row = {"type": report.category}
+            # Copy the flex attributes
+            for attr, val in report.flex_attrs.items():
+                downgrade_row[attr] = val
+            
+            # Replace the specific attribute being downgraded
+            downgrade_row[d.attr_name] = d.downgrade_value
+            downgrade_row["price"] = round(d.downgrade_tier.median, 2)
+            
+            csv_data.append(downgrade_row)
+            
+    # Save to CSV
+    if csv_data:
+        df = pd.DataFrame(csv_data)
+        df.to_csv("sensitivity.csv", index=False)
+        print("Generated 'sensitivity.csv' based on report data.")
+
     lines = []
     lines.append(f"\n{'='*65}")
     lines.append("PRICE SENSITIVITY REPORT")
@@ -273,21 +308,29 @@ def format_report(report: SensitivityReport) -> str:
             t = d.downgrade_tier
             arrow = f"{d.current_value} \u2192 {d.downgrade_value}"
             ctrl_flag = "" if d.controlled else " [uncontrolled]"
+            
+            # Use the report baseline if it's a fallback situation where the current tier is misaligned
+            current_median = report.baseline.median if report.baseline_is_fallback else d.current_tier.median
+            actual_delta = d.downgrade_tier.median - current_median
+            
             lines.append(
-                f"{d.attr_name:<20} {arrow:<25} {d.delta:>+10.2f}  "
+                f"{d.attr_name:<20} {arrow:<25} {actual_delta:>+10.2f}  "
                 f"{d.confidence} (n={t.n}, QCD={t.qcd:.2f}){ctrl_flag}"
             )
         lines.append("")
 
         # Best single cut (only if baseline is not a fallback)
         best = report.deltas[0]
+        best_current_median = report.baseline.median if report.baseline_is_fallback else best.current_tier.median
+        best_actual_delta = best.downgrade_tier.median - best_current_median
+        
         if not report.baseline_is_fallback:
-            best_price = round(report.baseline.median + best.delta, 2)
+            best_price = round(best_current_median + best_actual_delta, 2)
             lines.append(f"Best single cut: {best.attr_name} {best.current_value} \u2192 {best.downgrade_value} "
-                          f"\u2192 ${best_price:.2f} (saves ${abs(best.delta):.2f})")
+                          f"\u2192 ${best_price:.2f} (saves ${abs(best_actual_delta):.2f})")
         else:
             lines.append(f"Best single cut: {best.attr_name} {best.current_value} \u2192 {best.downgrade_value} "
-                          f"(saves ${abs(best.delta):.2f})")
+                          f"(saves ${abs(best_actual_delta):.2f})")
 
         # Combo estimate
         if report.combo_estimates:

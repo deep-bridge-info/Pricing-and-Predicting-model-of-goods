@@ -34,3 +34,7 @@ images/
 
 # Playwright MCP
 .playwright-mcp/
+xgb_features.pkl
+xgb_medians.pkl
+rf_medians.pkl
+*.pkl

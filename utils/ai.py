@@ -8,7 +8,7 @@ from openai import OpenAI
 import openai
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama2")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3:8b")
 
 
 def call_ai(prompt: str, timeout: int = 180) -> Optional[dict]:

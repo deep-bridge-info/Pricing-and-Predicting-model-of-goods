@@ -27,7 +27,7 @@ cp .env.example .env
 # Edit .env with your Apify token and set up your local Ollama server
 
 # Run (interactive — recommended)
-python3 cli.py run "TWS earbuds" --products 30
+python3 cli.py run "TWS earbuds" --products 1200
 
 # This will:
 #   1. Search Alibaba
@@ -38,23 +38,34 @@ python3 cli.py run "TWS earbuds" --products 30
 
 ## Commands
 
-### `run` — Interactive all-in-one (recommended)
+### Interactive Flow
+
+#### `run` — Interactive all-in-one (recommended)
 
 ```bash
-python3 cli.py run "TWS earbuds" --products 30
+python3 cli.py run "TWS earbuds" --products 1200
 ```
+Searches, discovers attributes, prompts you to pick fixed/flex, asks for quotation quantity, then runs the analysis.
+- `--in <file.csv>`: Load raw products from a CSV (e.g., `apify.csv`) instead of scraping live.
 
-Searches, discovers attributes, prompts you to pick fixed/flex, then runs the analysis.
+### Manual Pipeline Flow
 
-### `discover` — Discover attributes (non-interactive)
+#### `scrape` — Scrape Alibaba directly
+```bash
+python3 cli.py scrape "TWS earbuds" --products 1200 --out apify.csv
+```
+Scrape Alibaba and save raw data to CSV without running analysis.
+
+#### `discover` — Discover attributes (non-interactive)
 
 ```bash
-python3 cli.py discover "TWS earbuds" --products 30
+python3 cli.py discover "TWS earbuds" --products 1200
 ```
 
 Searches and extracts attributes. Caches results for `analyze`.
+- `--in <file.csv>`: Load from CSV instead of scraping live.
 
-### `analyze` — Run analysis on cached data (non-interactive)
+#### `analyze` — Run analysis on cached data (non-interactive)
 
 ```bash
 python3 cli.py analyze --fixed type=TWS --flex bluetooth_version=5.3 anc=true
@@ -62,10 +73,45 @@ python3 cli.py analyze --fixed type=TWS --flex bluetooth_version=5.3 anc=true
 
 Uses cached discovery data. Good for scripting or re-analyzing with different attribute selections.
 
-### `show` — Show cached results
+#### `show` — Show cached results
 
 ```bash
 python3 cli.py show
+```
+
+### Machine Learning Pipeline
+
+#### `collect-large` — Build a large raw dataset
+```bash
+python3 cli.py collect-large "TWS earbuds" --products 1200 --out merged_dataset.json
+```
+Collects up to 1200 items by varying keywords automatically.
+
+#### `build-model` — End-to-end Random Forest training
+```bash
+python3 cli.py build-model --json merged_dataset.json
+```
+Runs the full ETL pipeline: `extract_to_sql.py` → `export_products_csv.py` → `random_forest.py`.
+
+#### XGBoost Workflow (Alternative to RF)
+```bash
+# 1. Export sparse data preserving NaNs for XGBoost
+python3 export_products_csv_xgb.py
+
+# 2. Train the XGBoost model
+python3 xgboost_model.py
+```
+
+#### Prediction
+```bash
+# Predict prices on sensitivity.csv using Random Forest (default)
+python3 predict_sensitivity.py
+
+# Predict prices using XGBoost
+python3 predict_sensitivity.py --model xgb
+
+# Alternative CLI wrapper for Random Forest prediction
+python3 cli.py predict-rf
 ```
 
 ## Example Output

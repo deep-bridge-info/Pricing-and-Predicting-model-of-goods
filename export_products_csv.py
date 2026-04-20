@@ -8,18 +8,22 @@ import re
 
 
 def main():
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db", default="products_attributes.db")
-    parser.add_argument("--out", default="products.csv")
+    parser.add_argument("--db", default=os.path.join(BASE_DIR, "products_attributes.db"))
+    parser.add_argument("--out", default=os.path.join(BASE_DIR, "products.csv"))
     parser.add_argument("--blank-threshold", type=float, default=0.7)
-    parser.add_argument("--cleaned-out", default="products_cleaned.csv")
+    parser.add_argument("--cleaned-out", default=os.path.join(BASE_DIR, "products_cleaned.csv"))
     args = parser.parse_args()
 
-    if not os.path.exists(args.db):
-        print(f"Error: {args.db} not found.")
+    db_path = os.path.abspath(args.db)
+    if not os.path.exists(db_path):
+        print(f"Error: {db_path} not found.")
         sys.exit(1)
 
-    conn = sqlite3.connect(args.db)
+    print(f"Connecting to database at: {db_path}")
+    conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='products'")
@@ -408,7 +412,7 @@ def main():
         nc_oem = f"{norm(brand_col)}_oem_odm"
         filtered_headers.append(nc_oem)
         
-        actual_brands = set()
+        brand_counts = {}
         for rd in data_rows:
             s = (rd.get(brand_col, "") or "").strip()
             if not s:
@@ -423,7 +427,10 @@ def main():
                 parts = [p.strip() for p in re.split(r'[,/|;]', s) if p.strip()]
                 for p in parts:
                     if p.lower() != "other":
-                        actual_brands.add(p)
+                        brand_counts[p] = brand_counts.get(p, 0) + 1
+        
+        # Group rare brands (count < 5) into 'other'
+        actual_brands = {b for b, count in brand_counts.items() if count >= 5}
                 
         new_cols = []
         for b in sorted(actual_brands):
@@ -431,14 +438,26 @@ def main():
             new_cols.append((b, nc))
             filtered_headers.append(nc)
             
+        nc_other = f"{norm(brand_col)}_other"
+        filtered_headers.append(nc_other)
+            
         for rd in data_rows:
             is_oem = rd[nc_oem] == "1"
             s_low = rd[brand_col].lower()
-            for b, nc in new_cols:
-                if is_oem:
+            
+            if not is_oem:
+                any_matched = False
+                for b, nc in new_cols:
+                    if b.lower() in s_low:
+                        rd[nc] = "1"
+                        any_matched = True
+                    else:
+                        rd[nc] = "0"
+                rd[nc_other] = "1" if not any_matched else "0"
+            else:
+                for b, nc in new_cols:
                     rd[nc] = "0"
-                else:
-                    rd[nc] = "1" if b.lower() in s_low else "0"
+                rd[nc_other] = "0"
                     
         filtered_headers.remove(brand_col)
         for rd in data_rows:
@@ -490,7 +509,7 @@ def main():
                     
                 max_q = tier["max_quantity"]
                 if max_q is None or str(max_q).strip() == "" or str(max_q) == "-1":
-                    new_rd["max_quantity"] = "9999999999"
+                    new_rd["max_quantity"] = new_rd["min_quantity"]
                 else:
                     new_rd["max_quantity"] = str(max_q)
                     
@@ -503,7 +522,7 @@ def main():
             for ph in price_headers:
                 new_rd[ph] = ""
             new_rd["min_quantity"] = "1"
-            new_rd["max_quantity"] = "9999999999"
+            new_rd["max_quantity"] = new_rd["min_quantity"]
             joined_data.append(new_rd)
 
     with open(args.cleaned_out, "w", newline="", encoding="utf-8") as f:
