@@ -55,7 +55,7 @@ class ApifyClient:
         actor_id: str,
         run_input: Dict[str, Any],
         wait_for_finish: bool = True,
-        timeout_secs: int = 300,
+        timeout_secs: int = 99999999999999999,
     ) -> ActorRun:
         """
         Run an Apify actor and optionally wait for completion.
@@ -109,7 +109,7 @@ class ApifyClient:
         self,
         actor_id: str,
         run_input: Dict[str, Any],
-        timeout_secs: int = 300,
+        timeout_secs: int = 99999999999999999,
     ) -> List[Dict[str, Any]]:
         """
         Run actor and wait for completion, then return dataset items.
@@ -157,7 +157,7 @@ class ApifyClient:
     def get_dataset_items(
         self,
         dataset_id: str,
-        limit: int = 1000,
+        limit: int = 9999999999999,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """
