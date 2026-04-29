@@ -38,3 +38,4 @@ xgb_features.pkl
 xgb_medians.pkl
 rf_medians.pkl
 *.pkl
+e-commerce-bert-base-multilingual-cased
